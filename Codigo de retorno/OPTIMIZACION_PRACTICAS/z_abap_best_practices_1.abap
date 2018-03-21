@@ -1,6 +1,6 @@
 *&----------------------------------------------------------------------*
 *& PROGRAMA.............:  z_abap best practices_1
-*& AUTOR................:  David rueda Barrón
+*& AUTOR................:  David rueda BarrÃ³n
 *& FECHA................:                                               *
 *& TRANSACCION..........:                                               *
 *& ORDEN DE TRANSPORTE..:                                               *
@@ -15,7 +15,7 @@
 *&                                                                      *
 *&----------------------------------------------------------------------*
 
-REPORT  z_abap best practices_1.
+REPORT  z_abap_best_practices_1.
 
 TABLES: vbak.
 
@@ -23,7 +23,7 @@ TABLES: vbak.
 *&  ESTRUCTURAS GLOBALES
 *&---------------------------------------------------------------------*
 TYPES: BEGIN OF type_data,
-         vbeln     TYPE vbak-vbeln, "Nº de pedido
+         vbeln     TYPE vbak-vbeln, "NÂº de pedido
          audat     TYPE vbak-audat, "FEcha de pedido
          auart     TYPE vbak-auart, "Tipo de pedido SAP
          vkorg     TYPE vbak-vkorg, "Org. de ventas
@@ -47,7 +47,7 @@ DATA ti_data TYPE type_t_data.
 
 
 *&---------------------------------------------------------------------*
-*& Parámetros de Selección
+*& ParÃ¡metros de SelecciÃ³n
 *&---------------------------------------------------------------------*
 SELECTION-SCREEN BEGIN OF BLOCK block01 WITH FRAME TITLE text-s01.
 SELECT-OPTIONS: s_vbeln FOR vbak-vbeln,
