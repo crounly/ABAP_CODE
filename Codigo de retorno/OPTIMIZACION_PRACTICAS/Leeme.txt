@@ -1,0 +1,4 @@
+Los programas contenidos en este directorio estan mal programados
+El objetovo es utilizarlos para practicar pa optimización y las buenas practicas de programacion en ABAP
+
+Pruebate a ti mismo e intenta optimizarlos y reescribirlo siguiendo las buenas practicas de programacion en ABAP
