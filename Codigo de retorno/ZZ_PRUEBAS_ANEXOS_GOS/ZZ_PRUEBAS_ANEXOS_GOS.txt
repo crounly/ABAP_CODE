@@ -1,0 +1,203 @@
+*&---------------------------------------------------------------------*
+*& Report  ZZ_PRUEBAS_ANEXOS_GOS
+*& http://codigoderetorno.blogspot.com/2012/11/clgosdocumentservice.html
+*&---------------------------------------------------------------------*
+*& David Rueda Barrón 09.11.2012
+*& Código de ejemplo apra crear, visualizar y borrar anexos
+*&---------------------------------------------------------------------*
+REPORT ZZ_PRUEBAS_ANEXOS_GOS.
+
+
+*&---------------------------------------------------------------------*
+*& TYPE-POOLS
+*&---------------------------------------------------------------------*
+TYPE-POOLS: slis.
+*&---------------------------------------------------------------------*
+*& Tablas
+*&---------------------------------------------------------------------*
+TABLES: BSEG.
+
+*&---------------------------------------------------------------------*
+*& Variables Glovales
+*&---------------------------------------------------------------------*
+DATA: obj_gos        TYPE REF TO cl_gos_document_service.
+DATA: wa_borident TYPE                borident.
+DATA: wa_objkey   TYPE                borident-objkey.
+
+*&---------------------------------------------------------------------*
+*& Parámetros de Selección
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK BLOCK01 WITH FRAME TITLE TEXT-S01.
+PARAMETERS: P_BUKRS TYPE BUKRS OBLIGATORY,
+                           P_BELNR TYPE BELNR_D OBLIGATORY,
+                           P_GJAHR TYPE GJAHR OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK BLOCK01.
+
+SELECTION-SCREEN BEGIN OF BLOCK BLOCK02 WITH FRAME TITLE TEXT-S01.
+PARAMETERS: P_crear  type c RADIOBUTTON GROUP GR1,
+                           P_visua  type c RADIOBUTTON GROUP GR1,
+                           P_borra type c RADIOBUTTON GROUP GR1.
+SELECTION-SCREEN END OF BLOCK BLOCK02.
+
+*&---------------------------------------------------------------------*
+*& Validaciones de Pantalla
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN.
+
+*&---------------------------------------------------------------------*
+*& INITIALIZATION
+*&---------------------------------------------------------------------*
+INITIALIZATION.
+
+*&---------------------------------------------------------------------*
+*& START-OF-SELECTION
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+SELECT SINGLE *
+      FROM BSEG
+      WHERE BUKRS EQ P_BUKRS
+           AND BELNR EQ P_BELNR
+           AND GJAHR EQ P_GJAHR.
+
+IF ( SY-SUBRC <> 0 ).
+     MESSAGE 'No existe el documento' TYPE 'S' DISPLAY LIKE 'E'.
+ELSE.
+
+CREATE OBJECT obj_gos.
+
+CONCATENATE P_BUKRS P_BELNR P_GJAHR INTO wa_borident-objkey.
+wa_borident-objtype = 'BKPF'.
+
+IF P_crear IS NOT INITIAL.
+
+CALL METHOD obj_gos->create_attachment
+     EXPORTING
+        is_object = wa_borident
+     IMPORTING
+        ep_attachment = wa_borident-objkey.
+
+COMMIT WORK.
+
+ELSEIF p_visua IS NOT INITIAL.
+
+    PERFORM SELECT_ATTA USING wa_borident CHANGING  wa_objkey.
+
+
+    IF  ( wa_objkey IS NOT INITIAL ).
+       CALL METHOD obj_gos->display_attachment
+               EXPORTING
+                    ip_attachment = wa_objkey.
+    ENDIF.
+
+  ELSEIF P_Borra IS NOT INITIAL.
+
+    PERFORM SELECT_ATTA USING wa_borident CHANGING wa_objkey.
+
+    IF  ( wa_objkey IS NOT INITIAL ).
+        CALL METHOD obj_gos->delete_attachment
+               EXPORTING
+                   ip_attachment = wa_objkey.
+
+        COMMIT WORK.
+   ENDIF.
+
+  ENDIF.
+
+ENDIF.
+
+*&---------------------------------------------------------------------*
+*& Form SELECT_ATTA
+*&---------------------------------------------------------------------*
+* Muestra un Popu para que el cliente seleccione el adjunto
+*----------------------------------------------------------------------*
+FORM  SELECT_ATTA USING    pi_borident TYPE borident
+                  CHANGING po_objkey   TYPE borident-objkey.
+
+    TYPES: BEGIN OF type_anexos,
+      box(1)   TYPE C,
+      instid_b TYPE srgbtbrel-instid_b,
+      name(15) TYPE C,
+    END OF type_anexos.
+
+    DATA: tl_anexos TYPE STANDARD TABLE OF type_anexos,
+          tl_head TYPE STANDARD TABLE OF SOLI,
+          tl_cond TYPE STANDARD TABLE OF SOLI,
+          i_fieldcat TYPE  SLIS_T_FIELDCAT_ALV,
+          l_program  type SY-REPID.
+
+    DATA: Wl_SOODK TYPE SOODK,
+          w_fieldcat TYPE slis_fieldcat_alv.
+
+    FIELD-SYMBOLS: <fanexos> TYPE type_anexos,
+                   <fsoli>   TYPE SOLI.
+
+    CLEAR: po_objkey.
+    REFRESH: TL_anexos.
+
+    SELECT instid_b INTO CORRESPONDING FIELDS OF TABLE TL_anexos
+          FROM srgbtbrel
+            where   instid_a = pi_borident-objkey
+              and   typeid_a = pi_borident-objtype
+              and   reltype  = 'ATTA'.
+
+    LOOP AT TL_anexos ASSIGNING <fanexos>.
+
+        CLEAR Wl_SOODK.
+
+        Wl_SOODK-OBJTP = <fanexos>-instid_b+17(3).
+        Wl_SOODK-OBJYR = <fanexos>-instid_b+20(2).
+        Wl_SOODK-OBJNO = <fanexos>-instid_b+22.
+
+        CALL FUNCTION 'SO_OBJECT_GET_CONTENT'
+          EXPORTING
+            object_id              = Wl_SOODK
+          tables
+            OBJHEAD                = tl_head
+            objcont                = tl_cond
+          EXCEPTIONS
+           ARCHIVE_ERROR          = 1
+           OBJECT_NOT_EXIST       = 2
+           OTHERS                 = 3
+                  .
+        IF sy-subrc EQ 0.
+
+          READ TABLE tl_head INDEX 1 ASSIGNING <FSOLI>.
+          IF ( SY-SUBRC EQ 0 ).
+            <fanexos>-NAME = <FSOLI>-LINE+13.
+          ENDIF.
+
+        ENDIF.
+
+    ENDLOOP.
+
+    l_program = sy-repid.
+
+    w_fieldcat-fieldname = 'NAME'.
+    w_fieldcat-tabname   = 'TL_ANEXOS'.
+    w_fieldcat-seltext_m = 'Anexo'.
+    APPEND w_fieldcat TO i_fieldcat.
+
+    call function 'REUSE_ALV_POPUP_TO_SELECT'
+      exporting
+        i_title     = TEXT-T01
+        i_tabname   = 'TL_ANEXOS'
+        i_selection = 'X'
+        i_zebra = 'X'
+        i_checkbox_fieldname = 'BOX'
+        it_fieldcat          = i_fieldcat
+        i_callback_program   = l_program
+      tables
+        t_outtab = TL_ANEXOS
+      exceptions
+        program_error = 1
+        others = 2.
+
+    IF ( Sy-SUBRC EQ 0 ).
+      READ TABLE TL_ANEXOS WITH KEY BOX = 'X' ASSIGNING <fanexos>.
+      IF ( SY-SUBRC EQ 0 ).
+        po_objkey = <fanexos>-instid_b.
+      ENDIF.
+    ENDIF.
+
+endform.                    " SELECT_ATTA
