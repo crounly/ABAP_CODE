@@ -1,0 +1,50 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZZ_ATTA_MULTIPLES_PDF_TOP
+*&  variables estructuras y tablas internas globales
+*&---------------------------------------------------------------------*
+TYPE-POOLS : abap.
+
+*&---------------------------------------------------------------------*
+*& Tablas
+*&---------------------------------------------------------------------*
+TABLES: BKPF, LFA1, KNA1.
+
+*&---------------------------------------------------------------------*
+*& Constantes
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& DATA TYPES
+*&---------------------------------------------------------------------*
+TYPES: BEGIN OF TYPES_FACTURAS,
+XBLNR TYPE BKPF-XBLNR,   "Factura
+BELNR TYPE BKPF-BELNR,   "Documento contable
+BUKRS TYPE BKPF-BUKRS,   "Sociedad
+GJAHR TYPE BKPF-GJAHR,   "Ejercicio
+FILENAME TYPE FILE_TABLE-filename, "Ruta fichero para adjuntar
+END OF TYPES_FACTURAS.
+
+TYPES TABLE_FACTURAS TYPE STANDARD TABLE OF TYPES_FACTURAS.
+
+*&---------------------------------------------------------------------*
+*& DATA OBJECTS
+*&---------------------------------------------------------------------*
+DATA: TI_FACTURAS TYPE TABLE_FACTURAS.
+DATA: TF_FILES   TYPE filetable.
+DATA: Wa_return  TYPE ABAP_BOOL.
+
+DATA: WA_TARGET_BO TYPE BORIDENT.                "Bussiness Object
+DATA: WA_CONTENT   TYPE SOLI,                    "Contenido del doc a adjuntar.
+IT_CONTENT   TYPE STANDARD TABLE OF SOLI.  "Contenido del doc a adjuntar.
+
+DATA: WA_FOL_ID    TYPE SOODK,   "SAPoffice: Definición de la clave
+WA_OBJ_ID    TYPE SOODK,
+WA_OBJ_DATA   TYPE SOOD1,  "SAPoffice: atributos
+OFFSET        TYPE I.
+
+DATA: IT_OBJHEAD   TYPE STANDARD TABLE OF SOLI,
+WA_OBJECT    TYPE BORIDENT.
+
+DATA: WA_FOLMEM_K  TYPE SOFMK,
+WA_NOTE      TYPE BORIDENT,
+EP_NOTE      TYPE BORIDENT-OBJKEY.

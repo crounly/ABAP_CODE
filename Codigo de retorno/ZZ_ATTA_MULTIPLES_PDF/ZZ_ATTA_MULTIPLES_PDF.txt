@@ -1,0 +1,77 @@
+*&-----------------------------------------------------------------
+*& PROGRAMA.............: ZZ_ATTA_MULTIPLES_PDF
+*& AUTOR................: David Rueda Barrón
+*& FECHA................:
+*& TRANSACCION..........:
+*& ORDEN DE TRANSPORTE..:
+*& EMPRESA..............:
+*&----------------------------------------------------------------------
+*& DESCRIPCION:
+*&  programa para enlazar los PDF's de las facturas de compra y venta
+*&  con el contentserver
+*&----------------------------------------------------------------------
+*& Modificador  Fecha   MARCA Motivo
+*& ----------- -------- ----- -----------------------------------------
+*& XXXXXXXX    DD.MM.AA  @01  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+*&
+*&----------------------------------------------------------------------
+
+REPORT ZZ_ATTA_MULTIPLES_PDF.
+
+*&---------------------------------------------------------------------*
+*& INCLUDES
+*&---------------------------------------------------------------------*
+INCLUDE ZZ_ATTA_MULTIPLES_PDF_TOP.
+
+*&---------------------------------------------------------------------*
+*& Parámetros de Selección
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK BLOCK01 WITH FRAME TITLE TEXT-S01.
+    SELECT-OPTIONS: s_BUKRS FOR BKPF-BUKRS,
+                    s_date  FOR BKPF-BUDAT,
+                    s_vbeln FOR BKPF-XBLNR,
+                    s_BLART FOR BKPF-BLART OBLIGATORY.
+    PARAMETERS: p_file  LIKE RLGRAP-FILENAME OBLIGATORY.
+    PARAMETERS: pi_comp LIKE RLGRAP-FILENAME OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK BLOCK01.
+
+SELECTION-SCREEN BEGIN OF BLOCK BLOCK02 WITH FRAME TITLE TEXT-S02.
+    SELECT-OPTIONS: s_kunnr for kna1-kunnr,
+                    s_lifnr for lfa1-lifnr.
+SELECTION-SCREEN END OF BLOCK BLOCK02.
+
+
+*&---------------------------------------------------------------------*
+*& Validaciones de Pantalla
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+    perform set_filepath using text-001 changing p_file.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR pi_comp.
+    perform set_filepath using text-002 changing pi_comp.
+
+*&---------------------------------------------------------------------*
+*& INITIALIZATION
+*&---------------------------------------------------------------------*
+INITIALIZATION.
+
+*&---------------------------------------------------------------------*
+*& START-OF-SELECTION
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+    PERFORM CHECK_DATA.
+    PERFORM DIRECTORY_CHECK USING pi_comp CHANGING wa_return.
+
+    IF wa_return EQ ABAP_FALSE.
+      PERFORM CREATE_DIRECTORY USING pi_comp CHANGING wa_return.
+    ENDIF.
+
+    PERFORM DIRECTORY_LIST USING p_file   CHANGING TF_FILES.
+    PERFORM F_GET_FACTURA  USING TF_FILES CHANGING TI_FACTURAS.
+    PERFORM ADJUNTAR_PDFS USING TI_FACTURAS.
+
+*&---------------------------------------------------------------------*
+*& INCLUDES
+*&---------------------------------------------------------------------*
+INCLUDE ZZ_ATTA_MULTIPLES_PDF_F01.

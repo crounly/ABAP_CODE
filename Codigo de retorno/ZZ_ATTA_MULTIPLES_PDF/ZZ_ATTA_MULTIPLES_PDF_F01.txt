@@ -1,0 +1,586 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZZ_ATTA_MULTIPLES_PDF_F01
+*&  Subrutina ADJUNTAR_PDFS, esta es la subrutina que sube el archivo pdf
+*&  a una tabla interna, lo convierte y lo anexa al objeto de negocio de
+*&  sap. En WA_TARGET_BO-OBJTYPE indicais el tipo de objeto de negocio de SAP.
+*&---------------------------------------------------------------------*
+*---------------------------------------------------------------------*
+*  Form  abrir_fichero
+*---------------------------------------------------------------------*
+* Este FORM sirve para el explorador en el que se selecciona el archivo
+*----------------------------------------------------------------------*
+FORM set_filepath USING    pi_titulo TYPE string
+                  CHANGING po_file   LIKE rlgrap-filename.
+
+  DATA: wl_filename     TYPE string.
+
+  CALL METHOD cl_gui_frontend_services=>directory_browse
+     EXPORTING
+       window_title         = pi_titulo
+     CHANGING
+       selected_folder      = wl_filename
+     EXCEPTIONS
+       cntl_error           = 1
+       error_no_gui         = 2
+       not_supported_by_gui = 3
+       OTHERS               = 4.
+
+  IF sy-subrc <> 0.
+   MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+      WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ELSE.
+   po_file = wl_filename.
+ ENDIF.
+
+ENDFORM. "ABRIR_FICHERO
+*---------------------------------------------------------------------*
+*       Form  F_GET_FACTURA
+*---------------------------------------------------------------------*
+* Lee el nombre del archivo PDF y busca un doc. contable que cumpla:
+*     BKPF-XBLNR = nombe del archivo
+* La clave esta en quelos archivos PDF se llaman igual que el nº fact
+*---------------------------------------------------------------------*
+FORM f_get_factura  USING    ti_files     TYPE filetable
+                    CHANGING to_facturas  TYPE table_facturas.
+
+  DATA: wl_filename  TYPE sdbah-actid,
+        wl_filepath  TYPE dbmsgora-filename,
+        wl_extension TYPE sdbad-funct,                    "#EC NEEDED
+        wl_factura   TYPE vbrk-vbeln,
+        wl_return    TYPE c.
+
+  DATA: tl_tabla_fac TYPE table_facturas.
+
+  FIELD-SYMBOLS: <fi> TYPE file_table,
+                 <fd> TYPE types_facturas.
+
+  LOOP AT ti_files  ASSIGNING <fi>.
+
+    CLEAR: wl_filename, wl_extension, wl_filepath.
+    REFRESH: tl_tabla_fac.
+
+    MOVE <fi>-filename TO wl_filepath.
+
+    CALL FUNCTION 'SPLIT_FILENAME'
+      EXPORTING
+         long_filename  = wl_filepath
+      IMPORTING
+         pure_filename  = wl_filename
+         pure_extension = wl_extension.
+
+    IF ( wl_filename IS NOT INITIAL  ).
+
+        MOVE wl_filename TO  wl_factura.
+        CHECK wl_factura IN s_VBELN.
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+           EXPORTING
+             input  = wl_factura
+           IMPORTING
+             output = wl_factura.
+
+*    Puede que la estrutura de ZARIXFIL no sea igual, depende de cada cliente
+*    En este caso, el cliente añadio los campos KUNNR y LIFNR a la tabla
+
+        IF s_kunnr IS NOT INITIAL.
+
+          SELECT xblnr belnr bukrs  gjahr
+            INTO CORRESPONDING FIELDS OF TABLE tl_tabla_fac
+            FROM zarixfi1
+            WHERE xblnr EQ wl_factura
+*              AND kunnr IN s_kunnr
+              AND bukrs IN s_bukrs
+              AND budat IN s_date
+              AND blart IN s_blart.
+
+        ELSEIF s_lifnr IS NOT INITIAL.
+
+          SELECT xblnr belnr bukrs  gjahr
+            INTO CORRESPONDING FIELDS OF TABLE tl_tabla_fac
+            FROM zarixfi1
+            WHERE xblnr EQ wl_factura
+*              AND lifnr IN s_lifnr
+              AND bukrs IN s_bukrs
+              AND budat IN s_date
+              AND blart IN s_blart.
+
+       ENDIF.
+
+       IF tl_tabla_fac[] IS INITIAL.
+         CONTINUE.
+       ELSE.
+
+        LOOP AT tl_tabla_fac ASSIGNING <fd>.
+
+          PERFORM check_attachment USING <fd> wl_factura CHANGING wl_return.
+
+          IF wl_return IS INITIAL.
+             <fd>-filename = <fi>-filename.
+             APPEND <fd> TO to_facturas.
+          ELSE.
+             WRITE :/2 <fd>-bukrs,'/',<fd>-belnr,'/',<fd>-gjahr,TEXT-M01.
+          ENDIF.
+
+          DELETE tl_tabla_fac WHERE belnr EQ <fd>-belnr.
+        ENDLOOP.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.                    " F_GET_FACTURA
+*---------------------------------------------------------------------*
+*     Form  ADJUNTAR_PDFS
+*---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TI_FACTURAS  text
+*----------------------------------------------------------------------*
+FORM adjuntar_pdfs  USING  to_facturas  TYPE table_facturas.
+
+*  DATA document_service TYPE REF TO  cl_gos_document_service.
+*  DATA objeto TYPE borident.
+*  DATA objkey TYPE swo_typeid.
+  DATA wl_filename TYPE  string.
+
+  FIELD-SYMBOLS: <fd> TYPE LINE OF table_facturas.
+
+  LOOP AT to_facturas ASSIGNING <fd>.
+
+  CLEAR wl_filename.
+
+  "1- Configuración del Objeto.
+  wa_target_bo-objtype = 'BKPF'.
+  CONCATENATE <fd>-bukrs <fd>-belnr <fd>-gjahr INTO wa_target_bo-objkey.
+  wl_filename          = <fd>-filename.
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename                = wl_filename
+      filetype                = 'BIN'
+    TABLES
+      data_tab                = it_content
+    EXCEPTIONS
+      file_open_error         = 1
+      file_read_error         = 2
+      no_batch                = 3
+      gui_refuse_filetransfer = 4
+      invalid_type            = 5
+      no_authority            = 6
+      unknown_error           = 7
+      bad_data_format         = 8
+      header_not_allowed      = 9
+      separator_not_allowed   = 10
+      header_too_long         = 11
+      unknown_dp_error        = 12
+      access_denied           = 13
+      dp_out_of_memory        = 14
+      disk_full               = 15
+      dp_timeout              = 16
+      OTHERS                  = 17.
+
+  IF ( sy-subrc <> 0 ).
+    WRITE :/2 TEXT-M02, wl_filename, TEXT-M03, sy-subrc.
+    continue.
+  ENDIF.
+
+  CHECK NOT it_content IS INITIAL.
+
+  CALL FUNCTION 'SO_CONVERT_CONTENTS_BIN'
+    EXPORTING
+      it_contents_bin = it_content
+    IMPORTING
+      et_contents_bin = it_content.
+
+  CALL FUNCTION 'SO_FOLDER_ROOT_ID_GET'
+    EXPORTING
+      region                = 'B'                 "adress folder root
+    IMPORTING
+      folder_id             = wa_fol_id
+    EXCEPTIONS
+      communication_failure = 1
+      owner_not_exist       = 2
+      system_failure        = 3
+      x_error               = 4
+      OTHERS                = 5.
+
+   IF ( sy-subrc <> 0 ).
+     WRITE :/2 'ERROR: SO_FOLDER_ROOT_ID_GET: ', wl_filename, 'EXCEPTIONS: ', sy-subrc.
+     continue.
+   ENDIF.
+
+   wa_obj_data-objsns = 'O'.             "Objeto: Carácter (privado, funcional, etc.); O=Estándar
+   wa_obj_data-objla = sy-langu.         "Idioma en que se ha creado el documento
+
+*  Breve descripción del contenido:
+   wa_obj_data-objdes = <fd>-xblnr.
+   CONCATENATE text-a01 wa_obj_data-objdes INTO wa_obj_data-objdes SEPARATED BY space.
+
+*  Ext. del fichero.
+   offset = STRLEN( <fd>-filename ) - 3.
+   wa_obj_data-file_ext = <fd>-filename+offset(3).
+
+   CALL FUNCTION 'SO_OBJECT_INSERT'
+      EXPORTING
+        folder_id                  = wa_fol_id
+        object_type                = 'EXT'
+        object_hd_change           = wa_obj_data
+      IMPORTING
+        object_id                  = wa_obj_id
+      TABLES
+        objhead                    = it_objhead
+        objcont                    = it_content
+      EXCEPTIONS
+        active_user_not_exist      = 1
+        communication_failure      = 2
+        component_not_available    = 3
+        dl_name_exist              = 4
+        folder_not_exist           = 5
+        folder_no_authorization    = 6
+        object_type_not_exist      = 7
+        operation_no_authorization = 8
+        owner_not_exist            = 9
+        parameter_error            = 10
+        substitute_not_active      = 11
+        substitute_not_defined     = 12
+        system_failure             = 13
+        x_error                    = 14
+        OTHERS                     = 15.
+
+   IF sy-subrc = 0 AND wa_target_bo-objkey IS NOT INITIAL.
+*      Creamos el fichero como BO para que pueda adjuntarse.
+       wa_folmem_k-foltp = wa_fol_id-objtp.
+       wa_folmem_k-folyr = wa_fol_id-objyr.
+       wa_folmem_k-folno = wa_fol_id-objno.
+       wa_folmem_k-doctp = wa_obj_id-objtp.
+       wa_folmem_k-docyr = wa_obj_id-objyr.
+       wa_folmem_k-docno = wa_obj_id-objno.
+       ep_note = wa_folmem_k.
+       wa_note-objtype = 'MESSAGE'.
+       wa_note-objkey = ep_note.
+
+*      3- Adjuntar documento al BO deseado(Material en nuestro caso)
+       CALL FUNCTION 'BINARY_RELATION_CREATE_COMMIT'
+           EXPORTING
+             obj_rolea      = wa_target_bo
+             obj_roleb      = wa_note
+             relationtype   = 'ATTA'
+           EXCEPTIONS
+             no_model       = 1
+             internal_error = 2
+             unknown        = 3
+             OTHERS         = 4.
+
+       IF sy-subrc IS INITIAL.
+
+         WRITE :/2 TEXT-M05, 14 <fd>-xblnr, 26 TEXT-M06,
+                60 <fd>-bukrs,' / ', <fd>-belnr,' / ', <fd>-gjahr.
+
+         PERFORM move_pdf_completado USING <fd>-filename pi_comp.
+
+       ELSE.
+
+         WRITE :/2 TEXT-M07, 30 <fd>-xblnr.
+       ENDIF.
+
+   ELSE.
+       WRITE :/2 TEXT-M08, 30 <fd>-xblnr.
+       RETURN.
+   ENDIF.
+  ENDLOOP.
+
+ENDFORM.                    " ADJUNTAR_PDFS
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_DATA
+*&---------------------------------------------------------------------*
+*  Comprobar el rango de cliente o deudores:
+*    - El usuario debe introducir un rango de clientes o de deudores
+*    - No se puede introducir ambos rango a la vez
+*    - Ambos rango no puedne estar vaciaos a la vez
+*----------------------------------------------------------------------*
+FORM check_data .
+
+  IF ( s_kunnr IS INITIAL ) AND ( s_lifnr IS INITIAL ).
+    MESSAGE text-e01 TYPE 'S' DISPLAY LIKE 'E'.
+    STOP.  "-->Volvemos a la pantalla inicial
+  ELSEIF ( s_kunnr IS NOT INITIAL ) AND ( s_lifnr IS NOT INITIAL ).
+    MESSAGE text-e02 TYPE 'S' DISPLAY LIKE 'E'.
+    STOP.  "-->Volvemos a la pantalla inicial
+  ENDIF.
+
+ENDFORM.                    " CHECK_DATA
+*&---------------------------------------------------------------------*
+*&      Form  DIRECTORY_LIST
+*&---------------------------------------------------------------------*
+*  Lista de archivos del directorio seleccionados
+*  Nos interesan soló los PDF
+*--------------------------------------------------------------------------*
+*      -->PI_FILE  : directorio
+*--------------------------------------------------------------------------*
+FORM DIRECTORY_LIST USING     pi_file  TYPE RLGRAP-FILENAME
+                    CHANGING  po_files TYPE filetable.
+
+  DATA wl_filename type string.
+  DATA wl_count type i.
+
+  FIELD-SYMBOLS: <ffile>  TYPE LINE OF filetable.
+
+  CLEAR: wl_filename, wl_count.
+  REFRESH : po_files.
+
+  wl_filename = pi_file.
+
+  CALL METHOD cl_gui_frontend_services=>directory_list_files
+    EXPORTING
+      directory                   = wl_filename
+      filter                      = '*.PDF'
+      files_only                  = abap_false
+      directories_only            = abap_false
+    CHANGING
+      file_table                  = po_files
+      count                       = wl_count
+    EXCEPTIONS
+      cntl_error                  = 1
+      directory_list_files_failed = 2
+      wrong_parameter             = 3
+      error_no_gui                = 4
+      not_supported_by_gui        = 5
+      OTHERS                      = 6.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ELSE.
+    LOOP AT po_files ASSIGNING <ffile>.
+      CONCATENATE wl_filename '\' <ffile>-filename INTO <ffile>-filename.
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.                    " DIRECTORY_LIST
+*&---------------------------------------------------------------------*
+*&      Form  MOVE_PDF_COMPLETADO
+*&---------------------------------------------------------------------*
+*   Copia los PDF  adjuntados con exito a otra carpeta
+*----------------------------------------------------------------------*
+*      -->PI_ORIGEN   : directorio origen
+*      -->PI_DESTINO  : directorio destino
+*----------------------------------------------------------------------*
+FORM move_pdf_completado  USING   pi_origen  TYPE file_table-filename
+                                  pi_destino LIKE rlgrap-filename.
+
+  CHECK pi_origen  IS NOT INITIAL.
+  CHECK pi_destino IS NOT INITIAL.
+
+  DATA: copy_source TYPE string,
+        copy_destin TYPE string,
+        ret_var     TYPE i.
+
+  DATA: wl_filename  TYPE sdbah-actid,
+        wl_filepath  TYPE dbmsgora-filename,
+        wl_extension TYPE sdbad-funct.
+
+  wl_filepath = pi_origen .
+
+  CALL FUNCTION 'SPLIT_FILENAME'
+    EXPORTING
+      long_filename  = wl_filepath
+    IMPORTING
+      pure_filename  = wl_filename
+      pure_extension = wl_extension.
+
+  copy_source = pi_origen.
+  CONCATENATE pi_destino '\' wl_filename '.' wl_extension INTO copy_destin.
+
+  CALL METHOD cl_gui_frontend_services=>file_copy
+    EXPORTING
+      SOURCE             = copy_source
+      DESTINATION        = copy_destin
+      overwrite          = abap_true
+    EXCEPTIONS
+      cntl_error         = 1
+      error_no_gui       = 2
+      wrong_parameter    = 3
+      disk_full          = 4
+      access_denied      = 5
+      file_not_found     = 6
+      destination_exists = 7
+      unknown_error      = 8
+      path_not_found     = 9
+      disk_write_protect = 10
+      drive_not_ready    = 11
+      OTHERS             = 12.
+
+  IF sy-subrc EQ 0.
+
+    CALL METHOD cl_gui_frontend_services=>file_delete
+      EXPORTING
+        filename             = copy_source
+      CHANGING
+        rc                   = ret_var
+      EXCEPTIONS
+        file_delete_failed   = 1
+        cntl_error           = 2
+        error_no_gui         = 3
+        file_not_found       = 4
+        access_denied        = 5
+        unknown_error        = 6
+        not_supported_by_gui = 7
+        wrong_parameter      = 8
+        OTHERS               = 9.
+  ENDIF.
+ENDFORM.                    " MOVE_PDF_COMPLETADO
+*&---------------------------------------------------------------------*
+*&      Form  DIRECTORY_CHECK
+*&---------------------------------------------------------------------*
+*  Comprueba si existe el directorio
+*  Si no existe, pregunta si el usuario desea crearlo
+*----------------------------------------------------------------------*
+*      -->PI_DIR : directorio
+*----------------------------------------------------------------------*
+FORM directory_check USING    pi_dir    LIKE rlgrap-filename
+                     CHANGING po_return TYPE abap_bool.
+
+  CHECK pi_dir  IS NOT INITIAL.
+
+  DATA: wl_dir TYPE string.
+
+  CLEAR : wl_dir.
+
+  wl_dir = pi_dir.
+
+  CALL METHOD cl_gui_frontend_services=>directory_exist
+    EXPORTING
+      directory            = wl_dir
+    RECEIVING
+      result               = po_return
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      wrong_parameter      = 3
+      not_supported_by_gui = 4
+      OTHERS               = 5.
+
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    STOP.
+  ENDIF.
+ENDFORM.                    "directory_check
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_DIRECTORY
+*&---------------------------------------------------------------------*
+*    Pregunta al usuario si quiere crear el directorio localmente
+*    Crea el directorio si asi lo confirma el usuario
+*--------------------------------------------------------------------------*
+FORM check_attachment  USING    pi_doc     TYPE types_facturas
+                                pi_factura TYPE vbrk-vbeln
+                       CHANGING po_return  TYPE c.
+
+  DATA: wl_classname LIKE  bapibds01-classname VALUE 'BKPF',
+        wl_objkey    LIKE  swotobjid-objkey.
+
+  DATA: tl_BDN_CON TYPE STANDARD TABLE OF BDN_CON.
+
+  FIELD-SYMBOLS: <FS> TYPE BDN_CON.
+
+  CLEAR: wl_objkey, po_return.
+  REFRESH: tl_BDN_CON.
+
+  CONCATENATE pi_doc-bukrs pi_doc-belnr pi_doc-gjahr INTO wl_objkey.
+
+  CALL FUNCTION 'BDS_GOS_CONNECTIONS_GET'
+    EXPORTING
+*     LOGICAL_SYSTEM           =
+      classname                = wl_classname
+      objkey                   = wl_objkey
+      CLIENT                   = SY-MANDT
+    TABLES
+      gos_connections          = tl_BDN_CON
+    EXCEPTIONS
+     NO_OBJECTS_FOUND         = 1
+     INTERNAL_ERROR           = 2
+     INTERNAL_GOS_ERROR       = 3
+    OTHERS                   = 4
+            .
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ELSEIF ( tl_BDN_CON[] IS NOT INITIAL ).
+
+    LOOP AT tl_BDN_CON ASSIGNING <FS>.
+
+       FIND FIRST OCCURRENCE OF pi_factura IN  <FS>-DESCRIPT.
+
+       IF SY-SUBRC EQ 0.
+         po_return = abap_true.
+         EXIT.
+       ENDIF.
+
+    ENDLOOP.
+
+  ENDIF.
+
+ENDFORM.                    " CHECK_ATTACHMENT
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_DIRECTORY
+*&---------------------------------------------------------------------*
+*    Pregunta al usuario si quiere crear el directorio localmente
+*    Crea el directorio si asi lo confirmael usuario
+*----------------------------------------------------------------------*
+*      -->PI_COMP   Directorio
+*      <--PO_RETURN Resultado de la operación
+*----------------------------------------------------------------------*
+FORM create_directory  USING    pi_dir    LIKE rlgrap-filename
+                       CHANGING po_return TYPE abap_bool.
+
+  DATA: wl_dir    TYPE string,
+
+        wl_answer TYPE c,
+        wl_rc     TYPE i.
+
+  CLEAR : po_return, wl_dir, wl_rc.
+
+  CALL FUNCTION 'POPUP_TO_CONFIRM_STEP'                     "#EC *
+    EXPORTING
+      textline1 = pi_dir
+      textline2 = text-t02
+      titel     = text-t03
+*   START_COLUMN = 25
+*   START_ROW = 6
+*   CANCEL_DISPLAY = ?X?
+    IMPORTING
+      answer = wl_answer
+          .
+
+  IF wl_answer <> 'J'.
+    MESSAGE text-t01 TYPE 'S' DISPLAY LIKE 'E'.
+    STOP.
+  ELSE.
+
+    wl_dir = pi_dir.
+
+    CALL METHOD cl_gui_frontend_services=>directory_create
+      EXPORTING
+        directory                = wl_dir
+      CHANGING
+        rc                       = wl_rc
+      EXCEPTIONS
+        directory_create_failed  = 1
+        cntl_error               = 2
+        error_no_gui             = 3
+        directory_access_denied  = 4
+        directory_already_exists = 5
+        path_not_found           = 6
+        unknown_error            = 7
+        not_supported_by_gui     = 8
+        wrong_parameter          = 9
+        OTHERS                   = 10.
+    IF sy-subrc <> 0.
+      MESSAGE text-t04 TYPE 'S' DISPLAY LIKE 'E'.
+      STOP.
+    ELSE.
+      MESSAGE text-t05 TYPE 'S'.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    " CREATE_DIRECTORY
