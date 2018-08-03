@@ -1,0 +1,117 @@
+*&---------------------------------------------------------------------*
+*& PROGRAMA.............: ZZ_AYUDA_BUSQUEDA
+*& AUTOR................: David Rueda Barrón
+*& FECHA................: 12.02.2013
+*& TRANSACCION..........: ZZ_AYUDA_BUSQUEDA
+*& ORDEN DE TRANSPORTE..:
+*& EMPRESA..............:
+*&---------------------------------------------------------------------*
+*& DESCRIPCION:
+*& Ejemplo de una ayuda busqueda que rellena varios campos en la
+*& pantalla de selección
+*&---------------------------------------------------------------------*
+*& Modificador Fecha    MARCA Motivo
+*&---------------------------------------------------------------------*
+*& XXXXXXXX    DD.MM.AA @01   xxxxxxxxxxxxxx
+*&---------------------------------------------------------------------*
+
+REPORT ZZ_AYUDA_BUSQUEDA.
+
+TYPE-POOLS: shlp.
+
+*&---------------------------------------------------------------------*
+*& Parámetros de Selección
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK block01 WITH FRAME TITLE text-s01.
+   PARAMETERS : pi_xblnr TYPE xblnr,
+                pi_mblnr TYPE mblnr,
+                pi_mjahr TYPE mjahr.
+SELECTION-SCREEN END OF BLOCK block01.
+
+*&---------------------------------------------------------------------*
+*& Validaciones de Pantalla
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR pi_xblnr.
+  PERFORM f4_help_variant.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR pi_mjahr.
+  PERFORM f4_help_variant.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR pi_mblnr.
+  PERFORM f4_help_variant.
+
+*&---------------------------------------------------------------------*
+*& INITIALIZATION
+*&---------------------------------------------------------------------*
+INITIALIZATION.
+
+*&---------------------------------------------------------------------*
+*& START-OF-SELECTION
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*&---------------------------------------------------------------------*
+*& END-OF-SELECTION
+*&---------------------------------------------------------------------*
+END-OF-SELECTION.
+
+*&---------------------------------------------------------------------*
+*&      Form  F4_HELP_VARIANT
+*&---------------------------------------------------------------------*
+FORM f4_help_variant .
+
+  DATA: dyname LIKE d020s-prog,
+        dynumb LIKE d020s-dnum.
+
+  DATA: BEGIN OF dynpfields OCCURS 3.
+         INCLUDE STRUCTURE dynpread.
+  DATA: END OF dynpfields.
+
+  DATA: l_shlp     TYPE shlp_descr.
+  DATA: lv_name_sh TYPE shlpname VALUE 'ZMCODE_MATERIAL'. "Ayuda busqueda
+  DATA: t_return   TYPE STANDARD TABLE OF  ddshretval .
+  DATA: v_subrc    TYPE sysubrc.
+
+  FIELD-SYMBOLS: <FI> TYPE ddshiface,
+                 <FH> TYPE ddshretval,
+                 <FD>  LIKE LINE OF dynpfields.
+
+  dyname = sy-repid.
+  dynumb = sy-dynnr.
+
+  CALL FUNCTION 'F4IF_GET_SHLP_DESCR'
+    EXPORTING
+      shlpname = lv_name_sh
+      shlptype = 'SH'
+   IMPORTING
+      shlp     = l_shlp.
+
+
+  LOOP AT l_shlp-interface ASSIGNING <FI>.
+    <FI>-valfield = 'X'.
+  ENDLOOP.
+
+  CALL FUNCTION 'F4IF_START_VALUE_REQUEST'
+     EXPORTING
+      shlp          = l_shlp
+     IMPORTING
+      rc            = v_subrc
+     TABLES
+      return_values = t_return.
+
+  LOOP AT t_return ASSIGNING <FH>.
+
+    APPEND INITIAL LINE TO  dynpfields ASSIGNING <FD>.
+    CONCATENATE 'PI_' <FH>-FIELDNAME INTO <FD>-FIELDNAME.
+    <FD>-FIELDVALUE  = <FH>-FIELDVAL.
+
+  ENDLOOP.
+
+  CALL FUNCTION 'DYNP_VALUES_UPDATE'
+   EXPORTING
+     dyname     = dyname
+     dynumb     = dynumb
+   TABLES
+     dynpfields = dynpfields.
+
+endform   .                    " F4_HELP_VARIANT
