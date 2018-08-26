@@ -1,0 +1,83 @@
+*&---------------------------------------------------------------------*
+*& Report  ZZREAD_TABLE_BINARY
+*& AUTOR David Rueda Barrón
+*& FECHA 26.08.2018
+*&---------------------------------------------------------------------*
+*& Programa con 3 READ TABLES para probar busquedas binarias/secuenciales
+*&
+*& 1- READ TABLE es secuencial
+*& 2- READ TABLES es binario sin ordenar la tabla interna antes -> falla
+*& 3- READ TABLES es binario ordenando antes la tabla interna antes
+*&---------------------------------------------------------------------*
+
+REPORT ZZREAD_TABLE_BINARY LINE-COUNT 120.
+
+TYPES: BEGIN OF type_kunnr,
+  kunnr type kna1-kunnr,
+  name1 type kna1-name1,
+ END OF type_kunnr.
+
+DATA tl_kunnr TYPE STANDARD TABLE OF type_kunnr.
+DATA wl_mensaje(120) TYPE C.
+
+tl_kunnr = VALUE #(  ( kunnr = '29134'  name1 = 'Empresas Wayne' )
+                     ( kunnr = '01034'  name1 = 'Hammer' )
+                     ( kunnr = '01113'  name1 = 'Freezerdifer' )
+                     ( kunnr = '94411'  name1 = 'Industrias Stark' )
+                     ( kunnr = '11011'  name1 = 'Pedro Azoque Dollar' )
+                     ( kunnr = '11988'  name1 = 'Otra empresa más' )
+                     ( kunnr = '68812'  name1 = 'Arturo Depresto' )
+                     ( kunnr = '23190'  name1 = 'Carnicar SL' )
+                     ( kunnr = '09003'  name1 = 'D&D Girax' )
+                     ( kunnr = '47800'  name1 = 'Trasportes internacionales' )
+                     ( kunnr = '38811'  name1 = 'Juan sin Miedo' )
+                     ( kunnr = '40001'  name1 = 'Jose Arturo y Hermanos' )
+                     ( kunnr = '47711'  name1 = 'Federico Partinato' )
+                     ( kunnr = '04012'  name1 = 'Citadel Horus' )
+                     ( kunnr = '70023'  name1 = 'Aquaricom' )
+                     ( kunnr = '12012'  name1 = 'Asuncile prensados SL' )
+                     ( kunnr = '89312'  name1 = 'Cliente A' )
+                     ( kunnr = '91085'  name1 = 'Draxter Hat' )
+                     ( kunnr = '99231'  name1 = 'Sistemas trasporte frio' ) ).
+
+* 1º READ TABLE -> sin binary search, busqueda secuencial, la más lenta
+READ TABLE tl_kunnr WITH KEY kunnr = '04012'ASSIGNING FIELD-SYMBOL(<FS_KUNNR>).
+IF ( sy-subrc EQ 0 ).
+  uline.
+  wl_mensaje = 'Busqueda secuencial: Cliente 4012 encontrado'.
+  write:/ wl_mensaje.
+  WRITE:/ <FS_KUNNR>.
+
+ELSE.
+  uline.
+  wl_mensaje = 'Busqueda secuencial: No se ha encontrado el cliente 04012 en la tabla interna'.
+  WRITE:/ wl_mensaje.
+ENDIF.
+
+* 2º READ TABLE -> binary search  sin ordenar tabla, no encontrara el registro aunque existe
+READ TABLE tl_kunnr WITH KEY kunnr = '04012'ASSIGNING <FS_KUNNR> BINARY SEARCH.
+IF ( sy-subrc EQ 0 ).
+  uline.
+  wl_mensaje = 'Busqueda binaria sin ordenar: Cliente 4012 encontrado'.
+  WRITE:/ wl_mensaje.
+  WRITE:/ <FS_KUNNR>.
+ELSE.
+  uline.
+  WRITE:/  'Busqueda binaria sin ordenar:'.
+  WRITE:/  '--> No se ha encontrado el cliente 04012 en la tabla interna'.
+ENDIF.
+
+* 3º READ TABLE -> binary search y tabla ordenada
+SORT tl_kunnr ASCENDING BY kunnr.
+READ TABLE tl_kunnr WITH KEY kunnr = '04012'ASSIGNING <FS_KUNNR> BINARY SEARCH.
+IF ( sy-subrc EQ 0 ).
+  uline.
+  wl_mensaje = 'Busqueda binaria y tabla ordenada: Cliente 4012 encontrado'.
+  WRITE:/ wl_mensaje.
+  WRITE:/ <FS_KUNNR>.
+  uline.
+ELSE.
+  uline.
+  wl_mensaje = 'Busqueda binaria y tabla ordenada: No se ha encontrado el cliente 04012 en la tabla interna'.
+  WRITE:/ wl_mensaje.
+ENDIF.
